@@ -1,0 +1,81 @@
+Arranque
+========
+
+docker-compose up -d
+
+docker logs -f logstash
+
+docker exec -it ksqldb-cli ksql http://ksqldb-server:8088
+
+SET 'auto.offset.reset'='earliest';
+list topics;
+print logstash from beginning limit 5;
+
+Acceso
+======
+
+Acceso Consola Web
+------------------
+http://triqui4.fi.upm.es:39021/login
+
+Conexión con el servidor ksqldb dockerizado
+-------------------------------------------
+docker run --rm -it confluentinc/ksqldb-cli ksql -u $equipo -p xxx  http://triqui4.fi.upm.es:38188
+
+Acceso Galera MariaDB
+---------------------
+Preferentemente a través de Dbeaver
+
+Vía Docker:
+docker run -it --rm mariadb mariadb -h triqui4.fi.upm.es -P 38060 -u $equipo -p xxx
+
+Comandos KSQL
+===========
+mirar ksql.sql
+
+Carga datos
+===========
+
+./ingest.sh 2306 muestra.log localhost 50000
+
+
+Cluster ETSIINF RBAC
+====================
+
+Schema Registry
+---------------
+    "key.converter.schema.registry.url" = 'https://schemaregistry:8085',
+    "key.converter.schema.registry.ssl.truststore.location" = '/etc/kafka/secrets/kafka.client.truststore.jks',
+    "key.converter.schema.registry.ssl.truststore.password" = 'confluent',
+    "key.converter.basic.auth.credentials.source" = 'USER_INFO',
+    "key.converter.basic.auth.user.info" = 'connectorSA:a20d23w',
+
+    "value.converter.schema.registry.url" = 'https://schemaregistry:8085',
+    "value.converter.schema.registry.ssl.truststore.location" = '/etc/kafka/secrets/kafka.client.truststore.jks',
+    "value.converter.schema.registry.ssl.truststore.password" = 'confluent',
+pp    "value.converter.basic.auth.credentials.source" = 'USER_INFO',
+    "value.converter.basic.auth.user.info" = 'connectorSA:a20d23w',
+
+Sink Connectors
+---------------
+    "consumer.override.sasl.jaas.config" = 'org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required username=\"connectorSA\" password=\"a20d23w\" metadataServerUrls=\"https://kafka1:8091,https://kafka2:8092\";',
+    "principal.service.name" = 'connectorSA',
+    "principal.service.password" = 'a20d23w',
+
+Source Connectors
+-----------------
+    "producer.interceptor.classes" = 'io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor',
+    "producer.override.sasl.jaas.config" = 'org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required username=\"connectorSA\" password=\"a20d23w\" metadataServerUrls=\"https://kafka1:8091,https://kafka2:8092\";',
+    "principal.service.name" = 'connectorSA',
+    "principal.service.password" = 'a20d23w',
+
+
+Comandos importantes
+-----------------
+	Conexion a VPN:
+		sudo openfortivpn vpnssl.upm.es --username=carlos.nieto.petinal@alumnos.upm.es
+		
+	Conexion al CLUSTER de ADW:
+		docker run --rm -it confluentinc/ksqldb-cli ksql -u adw06 -p @DWupm2023  http://triqui4.fi.upm.es:38188
+
+
