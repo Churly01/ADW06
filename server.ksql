@@ -135,7 +135,7 @@ AS SELECT
   geoip->geo->location->lon AS lon,
   geoip->geo->location->lat AS lat
 FROM 2306_apache_filtered;
-
+/*
 CREATE TABLE IF NOT EXISTS 2306_apache_geoip_table
   WITH (KAFKA_TOPIC='adw.2306.geoip_table', VALUE_FORMAT='AVRO')
 AS SELECT 
@@ -143,4 +143,4 @@ AS SELECT
   COUNT(*) AS request_count
 FROM 2306_apache_filtered
 GROUP BY geoip->ip;
-
+*/
