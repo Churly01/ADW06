@@ -12,7 +12,7 @@ CREATE STREAM IF NOT EXISTS 2306_apache_raw (
 		version STRING,
 		original STRING,
 		name STRING,
-		os STRUCT<full_os STRING,
+		os STRUCT<`full` STRING,
 			version STRING,
 			name STRING>>,
 	url STRUCT<original STRING>,
@@ -23,18 +23,49 @@ CREATE STREAM IF NOT EXISTS 2306_apache_raw (
 		geo STRUCT<country_name STRING,
 			timezone STRING,
 			country_iso_code STRING,
+			region_iso_code STRING,
+			region_name STRING,
+			city_name STRING,
 			location STRUCT<lon DOUBLE, lat DOUBLE>,
-			continent_code STRING>,
-		geo_as STRUCT<organization STRUCT<name STRING>, number INT>>)
-	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON'
-);
+			continent_code STRING,
+			postal_code STRING>,
+		`as` STRUCT<organization STRUCT<name STRING>, number INT>>)
+	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
 
-/* FILTER STREAM BY TAG  */
 CREATE STREAM IF NOT EXISTS 2306_apache_filtered
-	WITH (KAFKA_TOPIC='adw.2306.filtered')
-	AS SELECT * FROM 2306_apache_raw
-	WHERE tag = '2306'
-	AND geoip IS NOT NULL;
+  WITH (KAFKA_TOPIC='adw.2306.filtered', VALUE_FORMAT='AVRO')
+AS SELECT *
+FROM 2306_apache_raw
+WHERE
+tag='2306'
+  AND timestamp IS NOT NULL
+  AND user_agent->uaid IS NOT NULL
+  AND user_agent->device->name IS NOT NULL
+  AND user_agent->version IS NOT NULL
+  AND user_agent->original IS NOT NULL
+  AND user_agent->name IS NOT NULL
+  AND user_agent->os->`full` IS NOT NULL
+  AND user_agent->os->version IS NOT NULL
+  AND user_agent->os->name IS NOT NULL
+  AND url->original IS NOT NULL
+  AND http->response->status_code IS NOT NULL
+  AND http->response->body->bytes IS NOT NULL
+  AND http->request->method IS NOT NULL
+  AND http->version IS NOT NULL
+  AND geoip->ip IS NOT NULL
+  AND geoip->geo->country_name IS NOT NULL
+  AND geoip->geo->timezone IS NOT NULL
+  AND geoip->geo->country_iso_code IS NOT NULL
+  AND geoip->geo->region_iso_code IS NOT NULL
+  AND geoip->geo->region_name IS NOT NULL
+  AND geoip->geo->city_name IS NOT NULL
+  AND geoip->geo->location->lon IS NOT NULL
+  AND geoip->geo->location->lat IS NOT NULL
+  AND geoip->geo->continent_code IS NOT NULL
+  AND geoip->geo->postal_code IS NOT NULL
+  AND geoip->`as`->organization->name IS NOT NULL
+  AND geoip->`as`->number IS NOT NULL;
+ 
 
 /* CREATE CONNECTOR TO MYSQL */
 CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
@@ -55,23 +86,22 @@ CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
 );
 
 /* CREATE STREAM FROM MySQL DATA  */
-CREATE STREAM IF NOT EXISTS 2306_monitor_stream (
+CREATE TABLE IF NOT EXISTS 2306_monitor_table (
 	idrt INT,
 	timestamp STRING,
-	IP STRING,
+	IP STRING PRIMARY KEY,
 	UAID STRING,
 	NV INT,
 	UV STRING,
 	rtreg TIMESTAMP)
-	WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO'
-);
+	WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='JSON');
 
 /* Create SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
 CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
     "connector.class" = 'io.confluent.connect.jdbc.JdbcSinkConnector',
     "connection.url" = 'jdbc:mysql://mysql:3306/kafka',
-    "topics" = 'adw.2306.filtered',
-    "table.name.format" = 'kafka',
+    "topics" = 'adw.2306.geoip',
+    "table.name.format" = 'geoip',
     "key.converter" = 'io.confluent.connect.avro.AvroConverter',
     "key.converter.schema.registry.url" = 'http://schema-registry:8081',
     "key.converter.schemas.enable" = 'true',
@@ -86,3 +116,31 @@ CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
     "insert.mode" = 'upsert',
     "delete.enabled" = 'false',
     "tasks.max" = '1');
+
+
+CREATE STREAM IF NOT EXISTS 2306_apache_geoip
+  WITH (KAFKA_TOPIC='adw.2306.geoip')
+AS SELECT 
+  geoip->ip AS ip,
+  geoip->`as`->organization->name AS nomorg,
+  geoip->`as`->number AS numorg,
+  geoip->geo->postal_code AS postal_code,
+  geoip->geo->city_name AS city_name,
+  geoip->geo->country_name AS country_name,
+  geoip->geo->country_iso_code AS country_iso_code,
+  geoip->geo->region_name AS region_name,
+  geoip->geo->region_iso_code AS region_iso_code,
+  geoip->geo->continent_code AS continent_code,
+  geoip->geo->timezone AS timezone,
+  geoip->geo->location->lon AS lon,
+  geoip->geo->location->lat AS lat
+FROM 2306_apache_filtered;
+
+CREATE TABLE IF NOT EXISTS 2306_apache_geoip_table
+  WITH (KAFKA_TOPIC='adw.2306.geoip_table', VALUE_FORMAT='AVRO')
+AS SELECT 
+  geoip->ip AS ip,
+  COUNT(*) AS request_count
+FROM 2306_apache_filtered
+GROUP BY geoip->ip;
+
