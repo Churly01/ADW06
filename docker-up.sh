@@ -5,7 +5,7 @@ docker-compose up -d
 docker exec mysql /createMonitor.sh
 
 read -n 1 -p "Press key after logstash started"
-./log-ingest/ingest.sh 2306 ./log-ingest/muestra.log localhost 50000 
+./log-ingest/ingest.sh 2306 ./log-ingest/muestra.log localhost 50000 &
 
 sleep 2
 read -n 1 -p "Press key after ksqldb-server started"
