@@ -65,7 +65,7 @@ tag='2306'
   AND geoip->geo->postal_code IS NOT NULL
   AND geoip->`as`->organization->name IS NOT NULL
   AND geoip->`as`->number IS NOT NULL;
- 
+
 
 /* CREATE CONNECTOR TO MYSQL */
 CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
@@ -85,15 +85,22 @@ CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
 	'transforms.extractInt.field' = 'idrt'
 );
 
-/* CREATE SOURCE TABLE FROM MySQL DATA  */
-CREATE SOURCE TABLE IF NOT EXISTS 2306_monitor_table (
+CREATE STREAM IF NOT EXISTS 2306_monitor_stream (
 	idrt INT,
-	IP STRING PRIMARY KEY,
+	IP STRING,
 	UAID STRING,
 	NV INT,
 	UV STRING,
 	rtreg TIMESTAMP)
-	WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO');
+WITH (KAFKA_TOPIC='adw.2306.monitor', KEY_FORMAT='KAFKA', VALUE_FORMAT='AVRO');
+
+/* CREATE TABLE FROM MySQL DATA  */
+CREATE OR REPLACE TABLE 2306_monitor_table
+	WITH (KAFKA_TOPIC='adw.2306.monitor_struct', KEY_FORMAT='KAFKA', VALUE_FORMAT='AVRO')
+	AS
+	SELECT STRUCT(IP := IP, UAID := UAID) AS KEY, COUNT(*) AS V
+	FROM 2306_monitor_stream
+	GROUP BY IP, UAID;
 
 CREATE STREAM IF NOT EXISTS 2306_apache_geoip
   WITH (KAFKA_TOPIC='adw.2306.geoip')
