@@ -85,8 +85,8 @@ CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
 	'transforms.extractInt.field' = 'idrt'
 );
 
-/* CREATE STREAM FROM MySQL DATA  */
-CREATE TABLE IF NOT EXISTS 2306_monitor_table (
+/* CREATE SOURCE TABLE FROM MySQL DATA  */
+CREATE SOURCE TABLE IF NOT EXISTS 2306_monitor_table (
 	idrt INT,
 	timestamp STRING,
 	IP STRING PRIMARY KEY,
@@ -95,6 +95,24 @@ CREATE TABLE IF NOT EXISTS 2306_monitor_table (
 	UV STRING,
 	rtreg TIMESTAMP)
 	WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='JSON');
+
+CREATE STREAM IF NOT EXISTS 2306_apache_geoip
+  WITH (KAFKA_TOPIC='adw.2306.geoip')
+AS SELECT 
+  geoip->ip AS ip,
+  geoip->`as`->organization->name AS nomorg,
+  geoip->`as`->number AS numorg,
+  geoip->geo->postal_code AS postal_code,
+  geoip->geo->city_name AS city_name,
+  geoip->geo->country_name AS country_name,
+  geoip->geo->country_iso_code AS country_iso_code,
+  geoip->geo->region_name AS region_name,
+  geoip->geo->region_iso_code AS region_iso_code,
+  geoip->geo->continent_code AS continent_code,
+  geoip->geo->timezone AS timezone,
+  geoip->geo->location->lon AS lon,
+  geoip->geo->location->lat AS lat
+FROM 2306_apache_filtered;
 
 /* Create SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
 CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
@@ -117,24 +135,6 @@ CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
     "delete.enabled" = 'false',
     "tasks.max" = '1');
 
-
-CREATE STREAM IF NOT EXISTS 2306_apache_geoip
-  WITH (KAFKA_TOPIC='adw.2306.geoip')
-AS SELECT 
-  geoip->ip AS ip,
-  geoip->`as`->organization->name AS nomorg,
-  geoip->`as`->number AS numorg,
-  geoip->geo->postal_code AS postal_code,
-  geoip->geo->city_name AS city_name,
-  geoip->geo->country_name AS country_name,
-  geoip->geo->country_iso_code AS country_iso_code,
-  geoip->geo->region_name AS region_name,
-  geoip->geo->region_iso_code AS region_iso_code,
-  geoip->geo->continent_code AS continent_code,
-  geoip->geo->timezone AS timezone,
-  geoip->geo->location->lon AS lon,
-  geoip->geo->location->lat AS lat
-FROM 2306_apache_filtered;
 /*
 CREATE TABLE IF NOT EXISTS 2306_apache_geoip_table
   WITH (KAFKA_TOPIC='adw.2306.geoip_table', VALUE_FORMAT='AVRO')
