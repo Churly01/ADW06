@@ -9,7 +9,7 @@ read -n 1 -p "Press key after logstash started"
 
 sleep 2
 read -n 1 -p "Press key after ksqldb-server started"
-docker exec ksqldb-cli ksql -f /server.ksql http://ksqldb-server:8088
+docker exec -t ksqldb-cli ksql -f /server.ksql http://ksqldb-server:8088
 sleep 1
 #Haha no esperar a que se creen los topics goes brrrrrrrr
 docker exec -t ksqldb-cli ksql -f /server.ksql http://ksqldb-server:8088
