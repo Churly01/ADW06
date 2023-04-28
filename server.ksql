@@ -97,13 +97,14 @@ WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO');
 /* MOMENTO DE ESTRUCTURAR CLAVES! Metemos las 2 claves que queremos comparar con la tabla de monitor*/
 CREATE STREAM IF NOT EXISTS 2306_apache_filtered_keyed
   WITH (KAFKA_TOPIC='adw.2306.filtered.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
-  AS SELECT *
+  AS SELECT user_agent, http, geoip, STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid) AS KEY
   FROM 2306_apache_filtered
   PARTITION BY STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid);
 
 CREATE STREAM IF NOT EXISTS 2306_monitor_stream_keyed
        WITH (KAFKA_TOPIC='adw.2306.monitor.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
-       AS SELECT * FROM 2306_monitor_stream
+       AS SELECT idrt, IP, UAID, NV, UV,  STRUCT(IP:=IP, UAID:=UAID) AS KEY
+       FROM 2306_monitor_stream
        PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
 
 CREATE TABLE IF NOT EXISTS 2306_apache_geoip
@@ -123,7 +124,7 @@ AS SELECT
   geoip->geo->timezone AS timezone,
   geoip->geo->location->lon AS lon,
   geoip->geo->location->lat AS lat,
-  COUNT(*) as ipc
+  COUNT(*) AS ipc
 FROM 2306_apache_filtered_keyed
 GROUP BY geoip;
 
@@ -153,29 +154,29 @@ CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
 
 /* Q1 */
 
-SELECT MSK.KSQL_COL_0 AS KEY, SUM(MSK.NV) AS V, COUNT(AFK.http) AS N
+SELECT MSK.KEY AS KEY, SUM(MSK.NV) AS V, COUNT(AFK.http) AS N
 FROM 2306_monitor_stream_keyed MSK
 INNER JOIN 2306_apache_filtered_keyed AFK
 WITHIN 300 DAYS
 GRACE PERIOD 15 MINUTES
-ON AFK.KSQL_COL_0 = MSK.KSQL_COL_0
-GROUP BY MSK.KSQL_COL_0
+ON AFK.KEY = MSK.KEY
+GROUP BY MSK.KEY
 EMIT CHANGES
 limit 2;
 
 /* Q2 */
 
-SELECT MSK.KSQL_COL_0 AS KEY,
-	MAX(MSK.UV) as UV,
-	COLLECT_SET(AFK.HTTP->REQUEST->METHOD) as MET,
-	COLLECT_SET(AFK.HTTP->RESPONSE->STATUS_CODE) as STC,
+SELECT MSK.KEY AS KEY,
+	MAX(MSK.UV) AS UV,
+	COLLECT_SET(AFK.HTTP->REQUEST->METHOD) AS MET,
+	COLLECT_SET(AFK.HTTP->RESPONSE->STATUS_CODE) AS STC,
 	COUNT(AFK.http) AS N
 FROM 2306_monitor_stream_keyed MSK
 INNER JOIN 2306_apache_filtered_keyed AFK
 WITHIN 300 DAYS
 GRACE PERIOD 15 MINUTES
-ON AFK.KSQL_COL_0 = MSK.KSQL_COL_0
-GROUP BY MSK.KSQL_COL_0
-HAVING MSK.KSQL_COL_0->UAID='5285b767cd64ebc8eddc7d617959f31795403d28'
+ON AFK.KEY = MSK.KEY
+GROUP BY MSK.KEY
+HAVING MSK.KEY->UAID='5285b767cd64ebc8eddc7d617959f31795403d28'
 EMIT CHANGES
 limit 2;
