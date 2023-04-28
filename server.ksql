@@ -32,8 +32,8 @@ CREATE STREAM IF NOT EXISTS 2306_apache_raw (
 		`as` STRUCT<organization STRUCT<name STRING>, number INT>>)
 	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
 
-CREATE STREAM IF NOT EXISTS 2306_apache_filtered
-  WITH (KAFKA_TOPIC='adw.2306.filtered', VALUE_FORMAT='AVRO')
+CREATE STREAM IF NOT EXISTS  2306_apache_filtered
+  WITH (KAFKA_TOPIC='adw.2306.filtered', KEY_FORMAT='PROTOBUF',VALUE_FORMAT='AVRO')
 AS SELECT *
 FROM 2306_apache_raw
 WHERE
@@ -66,6 +66,11 @@ tag='2306'
   AND geoip->`as`->organization->name IS NOT NULL
   AND geoip->`as`->number IS NOT NULL;
 
+/* MOMENTO DE ESTRUCTURAR CLAVES! Metemos las 2 claves que queremos comparar con la tabla de monitor*/
+CREATE STREAM IF NOT EXISTS 2306_apache_filtered_keyed
+  WITH (KAFKA_TOPIC='adw.2306.filtered.keyed', KEY_FORMAT='PROTOBUF',VALUE_FORMAT='AVRO')
+  AS SELECT * FROM 2306_apache_filtered
+  PARTITION BY STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid);
 
 /* CREATE CONNECTOR TO MYSQL */
 CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
@@ -78,9 +83,10 @@ CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
 	'validate.non.null'='false',
 	'table.whitelist'='monitor',
 	'topic.prefix'='adw.2306.',
-	'transforms' = 'createKey,extractInt',
+	'transforms' = 'createKey, extractInt',	 
 	'transforms.createKey.type' = 'org.apache.kafka.connect.transforms.ValueToKey',
-	'transforms.createKey.fields' = 'idrt',
+	'transforms.createKey.fields' = 'idrt',	
+	'key.converter.schemas.enable' = 'true',
 	'transforms.extractInt.type' = 'org.apache.kafka.connect.transforms.ExtractField$Key',
 	'transforms.extractInt.field' = 'idrt'
 );
@@ -92,19 +98,54 @@ CREATE STREAM IF NOT EXISTS 2306_monitor_stream (
 	NV INT,
 	UV STRING,
 	rtreg TIMESTAMP)
-WITH (KAFKA_TOPIC='adw.2306.monitor', KEY_FORMAT='KAFKA', VALUE_FORMAT='AVRO');
+WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO');
 
-/* CREATE TABLE FROM MySQL DATA  */
-CREATE OR REPLACE TABLE 2306_monitor_table
-	WITH (KAFKA_TOPIC='adw.2306.monitor_struct', KEY_FORMAT='KAFKA', VALUE_FORMAT='AVRO')
-	AS
-	SELECT STRUCT(IP := IP, UAID := UAID) AS KEY, COUNT(*) AS V
-	FROM 2306_monitor_stream
-	GROUP BY IP, UAID;
 
-CREATE STREAM IF NOT EXISTS 2306_apache_geoip
+CREATE STREAM IF NOT EXISTS 2306_monitor_stream_keyed
+       WITH (KAFKA_TOPIC='adw.2306.monitor.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
+       AS SELECT * FROM 2306_monitor_stream
+       PARTITION BY STRUCT(IP:=ip, UAID:=uaid), NV, UV;
+
+-- SELECT L.KEY, T.NV, L.V FROM 2306_monitor_stream_keyed T
+--        INNER JOIN  2306_apache_filtered_keyed L
+--        ON L.KSQL_COL_0=T.KSQL_COL_0 EMIT CHANGES; 
+
+/* CREATE TABLE FROM MySQL STREAM  */
+
+CREATE TABLE IF NOT EXISTS 2306_filtered_keyed_table
+WITH (KAFKA_TOPIC='adw.2306.filtered.keyed.table', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
+AS
+SELECT KSQL_COL_0 AS `KEY`, COUNT(*) AS N
+FROM 2306_apache_filtered_keyed
+GROUP BY KSQL_COL_0;
+
+
+-- CREATE STREAM IF NOT EXISTS 2306_apache_geoip
+--   WITH (KAFKA_TOPIC='adw.2306.geoip')
+-- AS SELECT 
+--   afk.geoip->ip AS ip,
+--   afk.geoip->`as`->organization->name AS nomorg,
+--   afk.geoip->`as`->number AS numorg,
+--   afk.geoip->geo->postal_code AS postal_code,
+--   afk.geoip->geo->city_name AS city_name,
+--   afk.geoip->geo->country_name AS country_name,
+--   afk.geoip->geo->country_iso_code AS country_iso_code,
+--   afk.geoip->geo->region_name AS region_name,
+--   afk.geoip->geo->region_iso_code AS region_iso_code,
+--   afk.geoip->geo->continent_code AS continent_code,
+--   afk.geoip->geo->timezone AS timezone,
+--   afk.geoip->geo->location->lon AS lon,
+--   afk.geoip->geo->location->lat AS lat,
+--   fkt.`KEY` as `KEY`,
+--   fkt.N as ipc
+-- FROM 2306_apache_filtered_keyed afk INNER JOIN 2306_filtered_keyed_table fkt ON afk.KSQL_COL_0=fkt.KEY;
+
+
+
+CREATE TABLE IF NOT EXISTS 2306_apache_geoip
   WITH (KAFKA_TOPIC='adw.2306.geoip')
-AS SELECT 
+AS SELECT
+  geoip,
   geoip->ip AS ip,
   geoip->`as`->organization->name AS nomorg,
   geoip->`as`->number AS numorg,
@@ -117,8 +158,10 @@ AS SELECT
   geoip->geo->continent_code AS continent_code,
   geoip->geo->timezone AS timezone,
   geoip->geo->location->lon AS lon,
-  geoip->geo->location->lat AS lat
-FROM 2306_apache_filtered;
+  geoip->geo->location->lat AS lat,
+  COUNT(*) as ipc
+FROM 2306_apache_filtered_keyed
+GROUP BY geoip;
 
 /* Create SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
 CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
@@ -126,7 +169,7 @@ CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
     "connection.url" = 'jdbc:mysql://mysql:3306/kafka',
     "topics" = 'adw.2306.geoip',
     "table.name.format" = 'geoip',
-    "key.converter" = 'io.confluent.connect.avro.AvroConverter',
+    "key.converter" = 'io.confluent.connect.protobuf.ProtobufConverter',
     "key.converter.schema.registry.url" = 'http://schema-registry:8081',
     "key.converter.schemas.enable" = 'true',
     "value.converter" = 'io.confluent.connect.avro.AvroConverter',
@@ -150,3 +193,25 @@ AS SELECT
 FROM 2306_apache_filtered
 GROUP BY geoip->ip;
 */
+
+/* QUERIES */
+
+/* Q1 */
+
+SELECT MSK.KSQL_COL_0 as KEY,MSK.NV, COUNT(*) as N 
+FROM 2306_monitor_stream_keyed MSK
+INNER JOIN 2306_APACHE_FILTERED_KEYED AFK
+WITHIN 1 hour
+ON AFK.KSQL_COL_0=MSK.KSQL_COL_0
+GROUP BY MSK.KSQL_COL_0, NV
+EMIT CHANGES limit 2;
+
+/* Q2 */
+
+SELECT MSK.KSQL_COL_0 as KEY, COLLECT_SET(AFK.HTTP->RESPONSE->STATUS_CODE) as STC, COLLECT_SET(AFK.HTTP->REQUEST->METHOD) as METHODS, MSK.UV, COUNT(*) as N 
+FROM 2306_monitor_stream_keyed MSK
+INNER JOIN 2306_APACHE_FILTERED_KEYED AFK
+WITHIN 1 hour
+ON AFK.KSQL_COL_0=MSK.KSQL_COL_0
+GROUP BY MSK.KSQL_COL_0, MSK.UV
+EMIT CHANGES limit 100;
