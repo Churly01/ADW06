@@ -1,6 +1,6 @@
 -- Consulta Q1
 
-SELECT MSK.KEY AS KEY,
+SELECT  MSK.KEY AS KEY,
 	MSK.NV AS V,
 	COUNT(AFK.http) AS N
 FROM 2306_monitor_stream_keyed MSK
