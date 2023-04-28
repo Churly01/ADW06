@@ -1,1 +1,22 @@
 -- ETL Tables
+
+CREATE TABLE IF NOT EXISTS 2306_apache_geoip
+	WITH (KAFKA_TOPIC='adw.2306.geoip')
+	AS
+	SELECT geoip,
+		geoip->ip AS ip,
+		geoip->`as`->organization->name AS nomorg,
+		geoip->`as`->number AS numorg,
+		geoip->geo->postal_code AS postal_code,
+		geoip->geo->city_name AS city_name,
+		geoip->geo->country_name AS country_name,
+		geoip->geo->country_iso_code AS country_iso_code,
+		geoip->geo->region_name AS region_name,
+		geoip->geo->region_iso_code AS region_iso_code,
+		geoip->geo->continent_code AS continent_code,
+		geoip->geo->timezone AS timezone,
+		geoip->geo->location->lon AS lon,
+		geoip->geo->location->lat AS lat,
+		COUNT(*) AS ipc
+	FROM 2306_apache_filtered_keyed
+	GROUP BY geoip;
