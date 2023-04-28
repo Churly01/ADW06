@@ -106,42 +106,6 @@ CREATE STREAM IF NOT EXISTS 2306_monitor_stream_keyed
        AS SELECT * FROM 2306_monitor_stream
        PARTITION BY STRUCT(IP:=ip, UAID:=uaid), NV, UV;
 
--- SELECT L.KEY, T.NV, L.V FROM 2306_monitor_stream_keyed T
---        INNER JOIN  2306_apache_filtered_keyed L
---        ON L.KSQL_COL_0=T.KSQL_COL_0 EMIT CHANGES; 
-
-/* CREATE TABLE FROM MySQL STREAM  */
-
-CREATE TABLE IF NOT EXISTS 2306_filtered_keyed_table
-WITH (KAFKA_TOPIC='adw.2306.filtered.keyed.table', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
-AS
-SELECT KSQL_COL_0 AS `KEY`, COUNT(*) AS N
-FROM 2306_apache_filtered_keyed
-GROUP BY KSQL_COL_0;
-
-
--- CREATE STREAM IF NOT EXISTS 2306_apache_geoip
---   WITH (KAFKA_TOPIC='adw.2306.geoip')
--- AS SELECT 
---   afk.geoip->ip AS ip,
---   afk.geoip->`as`->organization->name AS nomorg,
---   afk.geoip->`as`->number AS numorg,
---   afk.geoip->geo->postal_code AS postal_code,
---   afk.geoip->geo->city_name AS city_name,
---   afk.geoip->geo->country_name AS country_name,
---   afk.geoip->geo->country_iso_code AS country_iso_code,
---   afk.geoip->geo->region_name AS region_name,
---   afk.geoip->geo->region_iso_code AS region_iso_code,
---   afk.geoip->geo->continent_code AS continent_code,
---   afk.geoip->geo->timezone AS timezone,
---   afk.geoip->geo->location->lon AS lon,
---   afk.geoip->geo->location->lat AS lat,
---   fkt.`KEY` as `KEY`,
---   fkt.N as ipc
--- FROM 2306_apache_filtered_keyed afk INNER JOIN 2306_filtered_keyed_table fkt ON afk.KSQL_COL_0=fkt.KEY;
-
-
-
 CREATE TABLE IF NOT EXISTS 2306_apache_geoip
   WITH (KAFKA_TOPIC='adw.2306.geoip')
 AS SELECT
@@ -184,15 +148,6 @@ CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
     "delete.enabled" = 'false',
     "tasks.max" = '1');
 
-/*
-CREATE TABLE IF NOT EXISTS 2306_apache_geoip_table
-  WITH (KAFKA_TOPIC='adw.2306.geoip_table', VALUE_FORMAT='AVRO')
-AS SELECT 
-  geoip->ip AS ip,
-  COUNT(*) AS request_count
-FROM 2306_apache_filtered
-GROUP BY geoip->ip;
-*/
 
 /* QUERIES */
 
