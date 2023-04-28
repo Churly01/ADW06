@@ -38,20 +38,9 @@ AS SELECT user_agent, http, geoip
 FROM 2306_apache_raw
 WHERE
 tag='2306'
-  AND timestamp IS NOT NULL
   AND user_agent->uaid IS NOT NULL
-  AND user_agent->device->name IS NOT NULL
-  AND user_agent->version IS NOT NULL
-  AND user_agent->original IS NOT NULL
-  AND user_agent->name IS NOT NULL
-  AND user_agent->os->`full` IS NOT NULL
-  AND user_agent->os->version IS NOT NULL
-  AND user_agent->os->name IS NOT NULL
-  AND url->original IS NOT NULL
   AND http->response->status_code IS NOT NULL
-  AND http->response->body->bytes IS NOT NULL
   AND http->request->method IS NOT NULL
-  AND http->version IS NOT NULL
   AND geoip->ip IS NOT NULL
   AND geoip->geo->country_name IS NOT NULL
   AND geoip->geo->timezone IS NOT NULL
