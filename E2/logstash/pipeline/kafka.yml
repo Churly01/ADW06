@@ -1,0 +1,67 @@
+##Input section
+input {
+      tcp {
+        port => 50000
+        codec => plain
+      }
+}
+
+##Filter section
+filter {
+      useragent {
+        source => "message"
+      }
+      grok  {
+        match => { "message" => "%{WORD:tag} %{HTTPD_COMBINEDLOG:log}" }
+        remove_field => [ "message", "version", "event" ]
+      }
+      fingerprint {
+        source => ["[user_agent][original]"]
+        target => "[user_agent][uaid]"
+      }
+      mutate {
+        add_field => { "srcip" => "%{[source][address]}" }
+      }
+#      date {
+#        match => [ "timestamp", "dd/MMM/YYYY:H:m:s Z" ]
+#        remove_field => "timestamp"
+#      }
+      geoip {
+        default_database_type => "City"
+        source => "srcip"
+        target => "geoip"
+        tag_on_failure => ["geoip-city-failed"]
+      }
+      geoip {
+        default_database_type => "ASN"
+        source => "srcip"
+        target => "geoip"
+        tag_on_failure => ["geoip-asn-failed"]
+      }
+      mutate {
+        remove_field => [ "source", "log", "srcip" ]
+      }
+      if "_grokparsefailure" in [tags] {
+      # Drop messages that didn't match the BMF format.
+        drop { }
+      }
+}
+
+##Output section
+output {
+      file {
+##https://jsonparser.org/
+	      codec => json
+	      path => "/tmp/apache.json"
+      }
+      kafka {
+	      codec => json
+	      topic_id => "logstash"
+	      bootstrap_servers => "broker:9092"
+#	      sasl_mechanism => "SCRAM-SHA-256"
+#	      security_protocol => "SASL_SSL"
+#	      sasl_jaas_config => "org.apache.kafka.common.security.scram.ScramLoginModule required username='USERNAME'  password='PASSWORD'; "
+	      key_serializer => "org.apache.kafka.common.serialization.StringSerializer"
+	      value_serializer => "org.apache.kafka.common.serialization.StringSerializer"
+      }
+}

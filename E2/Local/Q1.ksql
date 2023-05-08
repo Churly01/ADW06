@@ -1,0 +1,14 @@
+-- Consulta Q1
+SELECT * FROM 2306_Q1;
+
+-- SELECT  MSK.KEY AS KEY,
+-- 	MSK.NV AS V,
+-- 	COUNT(AFK.http) AS N
+-- FROM 2306_monitor_stream_keyed MSK
+-- 	INNER JOIN 2306_apache_filtered_keyed AFK
+-- 	WITHIN 300 DAYS
+-- 	GRACE PERIOD 15 MINUTES
+-- 	ON AFK.KEY = MSK.KEY
+-- GROUP BY MSK.KEY, MSK.NV
+-- EMIT CHANGES
+-- limit 7;

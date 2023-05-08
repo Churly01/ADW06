@@ -1,0 +1,78 @@
+-- ETL Streams
+
+CREATE STREAM IF NOT EXISTS 2306_apache_raw (
+	tag STRING,
+	timestamp STRING,
+	user_agent STRUCT<uaid STRING,
+		device STRUCT<name STRING>,
+		version STRING,
+		original STRING,
+		name STRING,
+		os STRUCT<`full` STRING,
+			version STRING,
+			name STRING>>,
+	url STRUCT<original STRING>,
+	http STRUCT<response STRUCT<status_code INT, body STRUCT<bytes INT>>,
+		request STRUCT<method STRING>,
+		version STRING>,
+	geoip STRUCT<ip STRING,
+		geo STRUCT<country_name STRING,
+			timezone STRING,
+			country_iso_code STRING,
+			region_iso_code STRING,
+			region_name STRING,
+			city_name STRING,
+			location STRUCT<lon DOUBLE, lat DOUBLE>,
+			continent_code STRING,
+			postal_code STRING>,
+		`as` STRUCT<organization STRUCT<name STRING>, number INT>>)
+	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
+
+CREATE STREAM IF NOT EXISTS  2306_apache_filtered
+	WITH (KAFKA_TOPIC='adw.2306.filtered', KEY_FORMAT='PROTOBUF',VALUE_FORMAT='AVRO')
+	AS
+	SELECT user_agent, http, geoip
+	FROM 2306_apache_raw
+	WHERE
+	tag='2306'
+		AND user_agent->uaid IS NOT NULL
+		AND http->response->status_code IS NOT NULL
+		AND http->request->method IS NOT NULL
+		AND geoip->ip IS NOT NULL
+		AND geoip->geo->country_name IS NOT NULL
+		AND geoip->geo->timezone IS NOT NULL
+		AND geoip->geo->country_iso_code IS NOT NULL
+		AND geoip->geo->region_iso_code IS NOT NULL
+		AND geoip->geo->region_name IS NOT NULL
+		AND geoip->geo->city_name IS NOT NULL
+		AND geoip->geo->location->lon IS NOT NULL
+		AND geoip->geo->location->lat IS NOT NULL
+		AND geoip->geo->continent_code IS NOT NULL
+		AND geoip->geo->postal_code IS NOT NULL
+		AND geoip->`as`->organization->name IS NOT NULL
+		AND geoip->`as`->number IS NOT NULL;
+
+CREATE STREAM IF NOT EXISTS 2306_apache_filtered_keyed
+	WITH (KAFKA_TOPIC='adw.2306.filtered.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
+	AS
+	SELECT user_agent, http, geoip,
+		STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid) AS KEY
+	FROM 2306_apache_filtered
+	PARTITION BY STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid);
+
+CREATE STREAM IF NOT EXISTS 2306_monitor_stream (
+	idrt INT,
+	IP STRING,
+	UAID STRING,
+	NV INT,
+	UV TIMESTAMP,
+	rtreg TIMESTAMP)
+	WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO');
+
+CREATE STREAM IF NOT EXISTS 2306_monitor_stream_keyed
+	WITH (KAFKA_TOPIC='adw.2306.monitor.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
+	AS
+	SELECT idrt, IP, UAID, NV, UV,
+		STRUCT(IP:=IP, UAID:=UAID) AS KEY
+	FROM 2306_monitor_stream
+	PARTITION BY STRUCT(IP:=IP, UAID:=UAID);

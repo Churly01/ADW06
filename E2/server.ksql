@@ -1,0 +1,204 @@
+/* APARTADO 2 DEL ENUNCIADO  */
+/* Create a stream from the logstash topic */
+
+SET 'auto.offset.reset'='earliest';
+
+/* CREATE STREAM FROM LOGSTASH  */
+CREATE STREAM IF NOT EXISTS 2306_apache_raw (
+	tag STRING,
+	timestamp STRING,
+	user_agent STRUCT<uaid STRING,
+		device STRUCT<name STRING>,
+		version STRING,
+		original STRING,
+		name STRING,
+		os STRUCT<`full` STRING,
+			version STRING,
+			name STRING>>,
+	url STRUCT<original STRING>,
+	http STRUCT<response STRUCT<status_code INT, body STRUCT<bytes INT>>,
+		request STRUCT<method STRING>,
+		version STRING>,
+	geoip STRUCT<ip STRING,
+		geo STRUCT<country_name STRING,
+			timezone STRING,
+			country_iso_code STRING,
+			region_iso_code STRING,
+			region_name STRING,
+			city_name STRING,
+			location STRUCT<lon DOUBLE, lat DOUBLE>,
+			continent_code STRING,
+			postal_code STRING>,
+		`as` STRUCT<organization STRUCT<name STRING>, number INT>>)
+	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
+
+CREATE STREAM IF NOT EXISTS  2306_apache_filtered
+  WITH (KAFKA_TOPIC='adw.2306.filtered', KEY_FORMAT='PROTOBUF',VALUE_FORMAT='AVRO')
+AS SELECT user_agent, http, geoip
+FROM 2306_apache_raw
+WHERE
+tag='2306'
+  AND user_agent->uaid IS NOT NULL
+  AND http->response->status_code IS NOT NULL
+  AND http->request->method IS NOT NULL
+  AND geoip->ip IS NOT NULL
+  AND geoip->geo->country_name IS NOT NULL
+  AND geoip->geo->timezone IS NOT NULL
+  AND geoip->geo->country_iso_code IS NOT NULL
+  AND geoip->geo->region_iso_code IS NOT NULL
+  AND geoip->geo->region_name IS NOT NULL
+  AND geoip->geo->city_name IS NOT NULL
+  AND geoip->geo->location->lon IS NOT NULL
+  AND geoip->geo->location->lat IS NOT NULL
+  AND geoip->geo->continent_code IS NOT NULL
+  AND geoip->geo->postal_code IS NOT NULL
+  AND geoip->`as`->organization->name IS NOT NULL
+  AND geoip->`as`->number IS NOT NULL;
+
+/* CREATE CONNECTOR TO MYSQL */
+CREATE SOURCE CONNECTOR IF NOT EXISTS `2306-monitor-jdbc-source` WITH (
+	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
+	'connection.url'='jdbc:mysql://mysql:3306/kafka',
+	'connection.user' = 'kafka',
+	'connection.password'='kpwd23',
+	'mode'='incrementing',
+	'incrementing.column.name'='idrt',
+	'validate.non.null'='false',
+	'table.whitelist'='monitor',
+	'topic.prefix'='adw.2306.',
+	'transforms' = 'createKey, extractInt',	 
+	'transforms.createKey.type' = 'org.apache.kafka.connect.transforms.ValueToKey',
+	'transforms.createKey.fields' = 'idrt',	
+	'key.converter.schemas.enable' = 'true',
+	'transforms.extractInt.type' = 'org.apache.kafka.connect.transforms.ExtractField$Key',
+	'transforms.extractInt.field' = 'idrt'
+);
+
+CREATE STREAM IF NOT EXISTS 2306_monitor_stream (
+	idrt INT,
+	IP STRING,
+	UAID STRING,
+	NV INT,
+	UV TIMESTAMP,
+	rtreg TIMESTAMP)
+WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO');
+
+/* MOMENTO DE ESTRUCTURAR CLAVES! Metemos las 2 claves que queremos comparar con la tabla de monitor*/
+CREATE STREAM IF NOT EXISTS 2306_apache_filtered_keyed
+  WITH (KAFKA_TOPIC='adw.2306.filtered.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
+  AS SELECT user_agent, http, geoip, STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid) AS KEY
+  FROM 2306_apache_filtered
+  PARTITION BY STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid);
+
+CREATE STREAM IF NOT EXISTS 2306_monitor_stream_keyed
+       WITH (KAFKA_TOPIC='adw.2306.monitor.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
+       AS SELECT idrt, IP, UAID, NV, UV,  STRUCT(IP:=IP, UAID:=UAID) AS KEY
+       FROM 2306_monitor_stream
+       PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
+
+CREATE TABLE IF NOT EXISTS 2306_apache_geoip
+  WITH (KAFKA_TOPIC='adw.2306.geoip')
+AS SELECT
+  geoip,
+  geoip->ip AS ip,
+  geoip->`as`->organization->name AS nomorg,
+  geoip->`as`->number AS numorg,
+  geoip->geo->postal_code AS postal_code,
+  geoip->geo->city_name AS city_name,
+  geoip->geo->country_name AS country_name,
+  geoip->geo->country_iso_code AS country_iso_code,
+  geoip->geo->region_name AS region_name,
+  geoip->geo->region_iso_code AS region_iso_code,
+  geoip->geo->continent_code AS continent_code,
+  geoip->geo->timezone AS timezone,
+  geoip->geo->location->lon AS lon,
+  geoip->geo->location->lat AS lat,
+  COUNT(*) AS ipc
+FROM 2306_apache_filtered_keyed
+GROUP BY geoip;
+
+/* Create SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
+CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
+    "connector.class" = 'io.confluent.connect.jdbc.JdbcSinkConnector',
+    "connection.url" = 'jdbc:mysql://mysql:3306/kafka',
+    "topics" = 'adw.2306.geoip',
+    "table.name.format" = 'geoip',
+    "key.converter" = 'io.confluent.connect.protobuf.ProtobufConverter',
+    "key.converter.schema.registry.url" = 'http://schema-registry:8081',
+    "key.converter.schemas.enable" = 'true',
+    "value.converter" = 'io.confluent.connect.avro.AvroConverter',
+    "value.converter.schema.registry.url" = 'http://schema-registry:8081',
+    "value.converter.schemas.enable" = 'true',
+    "connection.user" = 'kafka',
+    "connection.password" = 'kpwd23',
+    "auto.create" = 'false',
+    "pk.mode" = 'record_value',
+    "pk.fields" = 'IP',
+    "insert.mode" = 'upsert',
+    "delete.enabled" = 'false',
+    "tasks.max" = '1');
+
+CREATE TABLE IF NOT EXISTS 2306_Q1 WITH (KAFKA_TOPIC='adw.2306.Q1')
+        AS SELECT
+       	MSK.KEY AS KEY,
+	MSK.NV AS V,
+	COUNT(AFK.http) AS N
+FROM 2306_monitor_stream_keyed MSK
+	INNER JOIN 2306_apache_filtered_keyed AFK
+	WITHIN 300 DAYS
+	GRACE PERIOD 15 MINUTES
+	ON AFK.KEY = MSK.KEY
+GROUP BY MSK.KEY, MSK.NV;
+
+CREATE TABLE IF NOT EXISTS 2306_Q2
+	WITH (KAFKA_TOPIC='adw.2306.Q2')
+	AS
+	SELECT MSK.KEY AS KEY,
+		ARRAY[MAX(MSK.UV)] AS UV,
+		COLLECT_SET(AFK.HTTP->REQUEST->METHOD) AS MET,
+		COLLECT_SET(AFK.HTTP->RESPONSE->STATUS_CODE) AS STC,
+		COUNT(AFK.http) AS N
+	FROM 2306_monitor_stream_keyed MSK
+		INNER JOIN 2306_apache_filtered_keyed AFK
+		WITHIN 300 DAYS
+		GRACE PERIOD 15 MINUTES
+		ON AFK.KEY = MSK.KEY
+	WHERE MSK.KEY->UAID= '6248c7a654ab4c1061918e0801cb074f5f01983d'
+	GROUP BY MSK.KEY;
+
+/* QUERIES */
+
+/* Q1 */
+
+SELECT * FROM 2306_Q1;
+
+-- SELECT	MSK.KEY AS KEY,
+-- 	MSK.NV AS V,
+-- 	COUNT(AFK.http) AS N
+-- FROM 2306_monitor_stream_keyed MSK
+-- 	INNER JOIN 2306_apache_filtered_keyed AFK
+-- 	WITHIN 300 DAYS
+-- 	GRACE PERIOD 15 MINUTES
+-- 	ON AFK.KEY = MSK.KEY
+-- GROUP BY MSK.KEY, MSK.NV
+-- EMIT CHANGES
+-- limit 7; 
+
+/* Q2 */
+
+SELECT * FROM 2306_Q2;
+
+-- SELECT MSK.KEY AS KEY,
+-- 	ARRAY[MAX(MSK.UV)] AS UV,
+-- 	COLLECT_SET(AFK.HTTP->REQUEST->METHOD) AS MET,
+-- 	COLLECT_SET(AFK.HTTP->RESPONSE->STATUS_CODE) AS STC,
+-- 	COUNT(AFK.http) AS N
+-- FROM 2306_monitor_stream_keyed MSK
+-- INNER JOIN 2306_apache_filtered_keyed AFK
+-- WITHIN 300 DAYS
+-- GRACE PERIOD 15 MINUTES
+-- ON AFK.KEY = MSK.KEY
+-- WHERE MSK.KEY->UAID= '6248c7a654ab4c1061918e0801cb074f5f01983d'
+-- GROUP BY MSK.KEY
+-- EMIT CHANGES
+-- limit 3; 
