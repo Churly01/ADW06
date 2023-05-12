@@ -120,7 +120,7 @@ CREATE STREAM IF NOT EXISTS adw06_acceso
   user_agent->version as VUA,
   user_agent->os->name +
   user_agent->os->`FULL` as OSINFO,  
-  UNIX_TIMESTAMP(PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC')) as TS -- SUS por ahora, igual hay alguna forma de convertirlo a BIGINT o algo...
+  PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS -- SUS por ahora, igual hay alguna forma de convertirlo a BIGINT o algo...
   FROM adw06_apache_raw;
 
 
