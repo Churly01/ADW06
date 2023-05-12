@@ -4,36 +4,38 @@
 SET 'auto.offset.reset'='earliest';
 
 /* CREATE STREAM FROM LOGSTASH  */
-CREATE STREAM IF NOT EXISTS adw06_apache_raw (
-	timestamp STRING,
+CREATE STREAM IF NOT EXISTS ADW06_APACHE_RAW (
+	TIMESTAMP STRING,
 	`@timestamp` STRING,
-		tag STRING,
-	user_agent STRUCT<
-		uaid STRING,
-		original STRING,
-		os STRUCT<
-		    `full` STRING,
-		    version STRING,	
-		    name STRING>,
-		device STRUCT<name STRING>,
-		version STRING,
-		name STRING>,	
-	geoip STRUCT<ip STRING,
-		geo STRUCT<country_name STRING,
-				`as` STRUCT<organization STRUCT<name STRING>, number INT>,
-						timezone STRING,
-								country_iso_code STRING,
-		region_iso_code STRING,
-		region_name STRING,
-		city_name STRING,
-		location STRUCT<lon DOUBLE, lat DOUBLE>,
-		continent_code STRING,
-		postal_code STRING>>,
-		http STRUCT<response STRUCT<status_code INT, body STRUCT<bytes INT>>,
-		request STRUCT<method STRING>,
-		version STRING>,
-	url STRUCT<original STRING>   )
-	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON')
+		TAG STRING,
+	USER_AGENT STRUCT<
+		UAID STRING,
+		ORIGINAL STRING,
+		OS STRUCT<
+		    `FULL` STRING,
+		    VERSION STRING,	
+		    NAME STRING>,
+		DEVICE STRUCT<NAME STRING>,
+		VERSION STRING,
+		NAME STRING>,	
+	GEOIP STRUCT<IP STRING,
+		GEO STRUCT<COUNTRY_NAME STRING,
+				`AS` STRUCT<ORGANIZATION STRUCT<NAME STRING>, NUMBER INT>,
+						TIMEZONE STRING,
+								COUNTRY_ISO_CODE STRING,
+		REGION_ISO_CODE STRING,
+		REGION_NAME STRING,
+		CITY_NAME STRING,
+		LOCATION STRUCT<LON DOUBLE, LAT DOUBLE>,
+		CONTINENT_CODE STRING,
+		POSTAL_CODE STRING>>,
+		HTTP STRUCT<RESPONSE STRUCT<STATUS_CODE INT, BODY STRUCT<BYTES INT>>,
+		REQUEST STRUCT<METHOD STRING>,
+		VERSION STRING>,
+	URL STRUCT<ORIGINAL STRING>   )
+	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
+
+ 
 
 CREATE STREAM IF NOT EXISTS  adw06_apache_filtered
   WITH (KAFKA_TOPIC='adw.06.', KEY_FORMAT='AVRO',VALUE_FORMAT='AVRO')
@@ -101,25 +103,54 @@ CREATE STREAM IF NOT EXISTS adw06_keymon
 -- WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='JSON', PARTITIONS=2, REPLICAS=2);
 
 
-
-
 -- Hasta aqui he llegado, AKA la conexion con monitor esta hecha...
 -- TODO APACHE_RAW y otras tablas...
 
+CREATE STREAM IF NOT EXISTS adw06_acceso
+  WITH (KAFKA_TOPIC='adw.06.acceso', VALUE_FORMAT='AVRO')
+  AS SELECT
+  geoip->ip as IP,
+  url->original as URL,
+  http->request->method as METHOD,
+  http->response->status_code as STATUS_CODE,
+  http->response->body->bytes as BYTES,
+  http->version as VHTTP,
+  user_agent->uaid as UAID,
+  user_agent->original as ORIGINAL,
+  user_agent->version as VUA,
+  user_agent->os->name +
+  user_agent->os->`FULL` as OSINFO,  
+  UNIX_TIMESTAMP(PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC')) as TS -- SUS por ahora, igual hay alguna forma de convertirlo a BIGINT o algo...
+  FROM adw06_apache_raw;
 
 
-/* MOMENTO DE ESTRUCTURAR CLAVES! Metemos las 2 claves que queremos comparar con la tabla de monitor*/
-CREATE STREAM IF NOT EXISTS 2306_apache_filtered_keyed
-  WITH (KAFKA_TOPIC='adw.2306.filtered.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
-  AS SELECT user_agent, http, geoip, STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid) AS KEY
-  FROM 2306_apache_filtered
-  PARTITION BY STRUCT(IP:=geoip->ip, UAID:=user_agent->uaid);
+CREATE STREAM IF NOT EXISTS adw06_keyacc
+  WITH (KAFKA_TOPIC='adw.06.keyacc', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
+  AS SELECT
+     IP,
+     URL,
+     METHOD,
+     STATUS_CODE,
+     BYTES,
+     VHTTP,
+     UAID,
+     ORIGINAL,
+     VUA,
+     OSINFO,
+     TS,
+     STRUCT(IP:=IP, UAID:=UAID) as KEY
+  FROM adw06_acceso
+  PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
 
-CREATE STREAM IF NOT EXISTS 2306_monitor_stream_keyed
-       WITH (KAFKA_TOPIC='adw.2306.monitor.keyed', KEY_FORMAT='PROTOBUF', VALUE_FORMAT='AVRO')
-       AS SELECT idrt, IP, UAID, NV, UV,  STRUCT(IP:=IP, UAID:=UAID) AS KEY
-       FROM 2306_monitor_stream
-       PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
+CREATE TABLE IF NOT EXISTS adw06_nacc
+       WITH (KAFKA_TOPIC='adw.06.nacc', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
+       AS SELECT
+              STRUCT(IP:=IP, UAID:=UAID) as KEY,
+	      COUNT(*) as N
+       FROM adw06_keyacc
+       GROUP BY  STRUCT(IP:=IP, UAID:=UAID);
+
+
 
 CREATE TABLE IF NOT EXISTS adw2306_apache_geoip
   WITH (KAFKA_TOPIC='adw.2306.geoip')
