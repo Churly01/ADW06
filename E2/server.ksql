@@ -4,9 +4,10 @@
 SET 'auto.offset.reset'='earliest';
 
 /* CREATE STREAM FROM LOGSTASH  */
-CREATE STREAM IF NOT EXISTS adw2306_apache_raw (
-	tag STRING,
+CREATE STREAM IF NOT EXISTS adw06_apache_raw (
 	timestamp STRING,
+	`@timestamp` STRING,
+		tag STRING,
 	user_agent STRUCT<
 		uaid STRING,
 		original STRING,
@@ -19,26 +20,25 @@ CREATE STREAM IF NOT EXISTS adw2306_apache_raw (
 		name STRING>,	
 	geoip STRUCT<ip STRING,
 		geo STRUCT<country_name STRING,
-			timezone STRING,
-			`as` STRUCT<organization STRUCT<name STRING>, number INT>,
-			country_iso_code STRING,
-			region_iso_code STRING,
-			region_name STRING,
-			city_name STRING,
-			location STRUCT<lon DOUBLE, lat DOUBLE>,
-			continent_code STRING,
-			postal_code STRING>>,
-	http STRUCT<response STRUCT<status_code INT, body STRUCT<bytes INT>>,
+				`as` STRUCT<organization STRUCT<name STRING>, number INT>,
+						timezone STRING,
+								country_iso_code STRING,
+		region_iso_code STRING,
+		region_name STRING,
+		city_name STRING,
+		location STRUCT<lon DOUBLE, lat DOUBLE>,
+		continent_code STRING,
+		postal_code STRING>>,
+		http STRUCT<response STRUCT<status_code INT, body STRUCT<bytes INT>>,
 		request STRUCT<method STRING>,
 		version STRING>,
 	url STRUCT<original STRING>   )
-	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON', TIMESTAMP='timestamp', TIMESTAMP_FORMAT='yyyy-MM-dd''T''HH:mm:ssX');
-
+	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON')
 
 CREATE STREAM IF NOT EXISTS  adw06_apache_filtered
-  WITH (KAFKA_TOPIC='adw.2306.filtered', KEY_FORMAT='PROTOBUF',VALUE_FORMAT='AVRO')
+  WITH (KAFKA_TOPIC='adw.06.', KEY_FORMAT='AVRO',VALUE_FORMAT='AVRO')
 AS SELECT user_agent, http, geoip
-FROM 2306_apache_raw
+FROM adw06_apache_raw
 WHERE
 tag='2306'
   AND user_agent->uaid IS NOT NULL
@@ -99,6 +99,8 @@ CREATE STREAM IF NOT EXISTS adw06_keymon
 -- 	UV TIMESTAMP,
 -- 	rtreg TIMESTAMP)
 -- WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='JSON', PARTITIONS=2, REPLICAS=2);
+
+
 
 
 -- Hasta aqui he llegado, AKA la conexion con monitor esta hecha...
