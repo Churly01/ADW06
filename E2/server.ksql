@@ -35,7 +35,7 @@ CREATE STREAM IF NOT EXISTS adw2306_apache_raw (
 	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON', TIMESTAMP='timestamp', TIMESTAMP_FORMAT='yyyy-MM-dd''T''HH:mm:ssX');
 
 
-CREATE STREAM IF NOT EXISTS  adw2306_apache_filtered
+CREATE STREAM IF NOT EXISTS  adw06_apache_filtered
   WITH (KAFKA_TOPIC='adw.2306.filtered', KEY_FORMAT='PROTOBUF',VALUE_FORMAT='AVRO')
 AS SELECT user_agent, http, geoip
 FROM 2306_apache_raw
@@ -59,9 +59,8 @@ tag='2306'
   AND geoip->`as`->number IS NOT NULL;
 
 /* CREATE CONNECTOR TO MYSQL */
-/* MUST DO:  REMOVE SMT CONVERSIONS, aka remove createKey conversions ...eiber...*/
 
-CREATE SOURCE CONNECTOR IF NOT EXISTS `adw2306-monitor-jdbc-source` WITH (
+CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
 	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
 	'connection.url'='jdbc:mysql://mysql:3306/kafka',
 	'connection.user' = 'kafka',
@@ -70,23 +69,42 @@ CREATE SOURCE CONNECTOR IF NOT EXISTS `adw2306-monitor-jdbc-source` WITH (
 	'incrementing.column.name'='idrt',
 	'validate.non.null'='false',
 	'table.whitelist'='monitor',
-	'topic.prefix'='adw.2306.',
-	'transforms' = 'createKey, extractInt',	 
-	'transforms.createKey.type' = 'org.apache.kafka.connect.transforms.ValueToKey',
-	'transforms.createKey.fields' = 'idrt',	
-	'key.converter.schemas.enable' = 'true',
-	'transforms.extractInt.type' = 'org.apache.kafka.connect.transforms.ExtractField$Key',
-	'transforms.extractInt.field' = 'idrt'
-);
+	'topic.prefix'='adw.06.',
+	'value.converter.schemas.enable'='false',
+	'key.converter.schemas.enable'='false',	
+	'key.converter' = 'org.apache.kafka.connect.json.JsonConverter',
+	'value.converter' = 'org.apache.kafka.connect.json.JsonConverter'
+); 
 
-CREATE STREAM IF NOT EXISTS adw2306_monitor_stream (
+CREATE STREAM IF NOT EXISTS adw06_monitor (
 	idrt INT,
 	IP STRING,
 	UAID STRING,
 	NV INT,
 	UV TIMESTAMP,
 	rtreg TIMESTAMP)
-WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='AVRO');
+WITH (KAFKA_TOPIC='adw.06.monitor', VALUE_FORMAT='JSON');
+
+CREATE STREAM IF NOT EXISTS adw06_keymon
+       WITH (KAFKA_TOPIC='adw.06.keymon', KEY_FORMAT='AVRO', VALUE_FORMAT='AVRO')
+       AS SELECT idrt, IP, UAID, NV, UV,  STRUCT(IP:=IP, UAID:=UAID) AS KEY
+       FROM adw06_monitor
+       PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
+-- // PARA EL SERVIDOR DE EIBE...GRRR
+-- CREATE STREAM IF NOT EXISTS adw06_monitor (
+-- 	idrt INT,
+-- 	IP STRING,
+-- 	UAID STRING,
+-- 	NV INT,
+-- 	UV TIMESTAMP,
+-- 	rtreg TIMESTAMP)
+-- WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='JSON', PARTITIONS=2, REPLICAS=2);
+
+
+-- Hasta aqui he llegado, AKA la conexion con monitor esta hecha...
+-- TODO APACHE_RAW y otras tablas...
+
+
 
 /* MOMENTO DE ESTRUCTURAR CLAVES! Metemos las 2 claves que queremos comparar con la tabla de monitor*/
 CREATE STREAM IF NOT EXISTS 2306_apache_filtered_keyed
@@ -183,7 +201,7 @@ FROM 2306_monitor_stream_keyed MSK
 	GRACE PERIOD 15 MINUTES
 	ON AFK.KEY = MSK.KEY
 GROUP BY MSK.KEY, MSK.NV
-EMIT CHANGES
+EMIT CHANGES;
 -- limit 7;
 
 --SELECT * FROM 2306_Q1;
