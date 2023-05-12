@@ -19,49 +19,23 @@ CREATE STREAM IF NOT EXISTS ADW06_APACHE_RAW (
 		VERSION STRING,
 		NAME STRING>,	
 	GEOIP STRUCT<IP STRING,
+		`AS` STRUCT<ORGANIZATION STRUCT<NAME STRING>, NUMBER INT>,	
 		GEO STRUCT<COUNTRY_NAME STRING,
-				`AS` STRUCT<ORGANIZATION STRUCT<NAME STRING>, NUMBER INT>,
-						TIMEZONE STRING,
-								COUNTRY_ISO_CODE STRING,
-		REGION_ISO_CODE STRING,
-		REGION_NAME STRING,
-		CITY_NAME STRING,
-		LOCATION STRUCT<LON DOUBLE, LAT DOUBLE>,
-		CONTINENT_CODE STRING,
-		POSTAL_CODE STRING>>,
-		HTTP STRUCT<RESPONSE STRUCT<STATUS_CODE INT, BODY STRUCT<BYTES INT>>,
+				TIMEZONE STRING,
+				COUNTRY_ISO_CODE STRING,
+				REGION_ISO_CODE STRING,
+				REGION_NAME STRING,
+				CITY_NAME STRING,
+				LOCATION STRUCT<LON DOUBLE, LAT DOUBLE>,
+				CONTINENT_CODE STRING,
+				POSTAL_CODE STRING>>,
+	HTTP STRUCT<RESPONSE STRUCT<STATUS_CODE INT, BODY STRUCT<BYTES INT>>,	
 		REQUEST STRUCT<METHOD STRING>,
 		VERSION STRING>,
 	URL STRUCT<ORIGINAL STRING>   )
 	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
 
  
-
-CREATE STREAM IF NOT EXISTS  adw06_apache_filtered
-  WITH (KAFKA_TOPIC='adw.06.', KEY_FORMAT='AVRO',VALUE_FORMAT='AVRO')
-AS SELECT user_agent, http, geoip
-FROM adw06_apache_raw
-WHERE
-tag='2306'
-  AND user_agent->uaid IS NOT NULL
-  AND http->response->status_code IS NOT NULL
-  AND http->request->method IS NOT NULL
-  AND geoip->ip IS NOT NULL
-  AND geoip->geo->country_name IS NOT NULL
-  AND geoip->geo->timezone IS NOT NULL
-  AND geoip->geo->country_iso_code IS NOT NULL
-  AND geoip->geo->region_iso_code IS NOT NULL
-  AND geoip->geo->region_name IS NOT NULL
-  AND geoip->geo->city_name IS NOT NULL
-  AND geoip->geo->location->lon IS NOT NULL
-  AND geoip->geo->location->lat IS NOT NULL
-  AND geoip->geo->continent_code IS NOT NULL
-  AND geoip->geo->postal_code IS NOT NULL
-  AND geoip->`as`->organization->name IS NOT NULL
-  AND geoip->`as`->number IS NOT NULL;
-
-/* CREATE CONNECTOR TO MYSQL */
-
 CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
 	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
 	'connection.url'='jdbc:mysql://mysql:3306/kafka',
@@ -78,7 +52,7 @@ CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
 	'value.converter' = 'org.apache.kafka.connect.json.JsonConverter'
 ); 
 
-CREATE STREAM IF NOT EXISTS adw06_monitor (
+CREATE STREAM IF NOT EXISTS ADW06_MONITOR (
 	idrt INT,
 	IP STRING,
 	UAID STRING,
@@ -87,7 +61,7 @@ CREATE STREAM IF NOT EXISTS adw06_monitor (
 	rtreg TIMESTAMP)
 WITH (KAFKA_TOPIC='adw.06.monitor', VALUE_FORMAT='JSON');
 
-CREATE STREAM IF NOT EXISTS adw06_keymon
+CREATE STREAM IF NOT EXISTS ADW06_KEYMON
        WITH (KAFKA_TOPIC='adw.06.keymon', KEY_FORMAT='AVRO', VALUE_FORMAT='AVRO')
        AS SELECT idrt, IP, UAID, NV, UV,  STRUCT(IP:=IP, UAID:=UAID) AS KEY
        FROM adw06_monitor
@@ -102,11 +76,7 @@ CREATE STREAM IF NOT EXISTS adw06_keymon
 -- 	rtreg TIMESTAMP)
 -- WITH (KAFKA_TOPIC='adw.2306.monitor', VALUE_FORMAT='JSON', PARTITIONS=2, REPLICAS=2);
 
-
--- Hasta aqui he llegado, AKA la conexion con monitor esta hecha...
--- TODO APACHE_RAW y otras tablas...
-
-CREATE STREAM IF NOT EXISTS adw06_acceso
+CREATE STREAM IF NOT EXISTS ADW06_ACCESO
   WITH (KAFKA_TOPIC='adw.06.acceso', VALUE_FORMAT='AVRO')
   AS SELECT
   geoip->ip as IP,
@@ -120,11 +90,14 @@ CREATE STREAM IF NOT EXISTS adw06_acceso
   user_agent->version as VUA,
   user_agent->os->name +
   user_agent->os->`FULL` as OSINFO,  
-  PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS -- SUS por ahora, igual hay alguna forma de convertirlo a BIGINT o algo...
-  FROM adw06_apache_raw;
+  PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS 
+  FROM adw06_apache_raw
+  WHERE tag='2306'
+  AND user_agent->uaid IS NOT NULL
+  AND geoip->ip IS NOT NULL;
 
 
-CREATE STREAM IF NOT EXISTS adw06_keyacc
+CREATE STREAM IF NOT EXISTS ADW06_KEYACC
   WITH (KAFKA_TOPIC='adw.06.keyacc', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
   AS SELECT
      IP,
@@ -142,7 +115,7 @@ CREATE STREAM IF NOT EXISTS adw06_keyacc
   FROM adw06_acceso
   PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
 
-CREATE TABLE IF NOT EXISTS adw06_nacc
+CREATE TABLE IF NOT EXISTS ADW06_NACC
        WITH (KAFKA_TOPIC='adw.06.nacc', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
        AS SELECT
               STRUCT(IP:=IP, UAID:=UAID) as KEY,
@@ -152,34 +125,37 @@ CREATE TABLE IF NOT EXISTS adw06_nacc
 
 
 
-CREATE TABLE IF NOT EXISTS adw2306_apache_geoip
-  WITH (KAFKA_TOPIC='adw.2306.geoip')
+CREATE TABLE IF NOT EXISTS ADW06_GEOIP
+  WITH (KAFKA_TOPIC='adw.06.geoip', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
 AS SELECT
-  geoip,
-  geoip->ip AS ip,
-  geoip->`as`->organization->name AS nomorg,
-  geoip->`as`->number AS numorg,
-  geoip->geo->postal_code AS postal_code,
-  geoip->geo->city_name AS city_name,
-  geoip->geo->country_name AS country_name,
-  geoip->geo->country_iso_code AS country_iso_code,
-  geoip->geo->region_name AS region_name,
-  geoip->geo->region_iso_code AS region_iso_code,
-  geoip->geo->continent_code AS continent_code,
-  geoip->geo->timezone AS timezone,
-  geoip->geo->location->lon AS lon,
-  geoip->geo->location->lat AS lat,
-  COUNT(*) AS ipc
-FROM 2306_apache_filtered_keyed
-GROUP BY geoip;
+  GEOIP as KEY,
+  GEOIP->IP AS IP,
+  GEOIP->`AS`->ORGANIZATION->NAME AS NOMORG,
+  GEOIP->`AS`->NUMBER AS NUMORG,
+  GEOIP->GEO->POSTAL_CODE AS POSTAL_CODE,
+  GEOIP->GEO->CITY_NAME AS CITY_NAME,
+  GEOIP->GEO->COUNTRY_NAME AS COUNTRY_NAME,
+  GEOIP->GEO->COUNTRY_ISO_CODE AS COUNTRY_ISO_CODE,
+  GEOIP->GEO->REGION_NAME AS REGION_NAME,
+  GEOIP->GEO->REGION_ISO_CODE AS REGION_ISO_CODE,
+  GEOIP->GEO->CONTINENT_CODE AS CONTINENT_CODE,
+  GEOIP->GEO->TIMEZONE AS TIMEZONE,
+  GEOIP->GEO->LOCATION->LON AS LON,
+  GEOIP->GEO->LOCATION->LAT AS LAT,
+  COUNT(*) AS IPC
+FROM ADW06_APACHE_RAW
+WHERE tag='2306'
+      AND GEOIP->IP IS NOT NULL
+      AND USER_AGENT->UAID IS NOT NULL
+GROUP BY GEOIP;
 
 /* Create SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
-CREATE SINK CONNECTOR IF NOT EXISTS `2306-geoip-jdbc-sink` WITH(
+CREATE SINK CONNECTOR IF NOT EXISTS `adw06-geoip-jdbc-sink` WITH(
     "connector.class" = 'io.confluent.connect.jdbc.JdbcSinkConnector',
     "connection.url" = 'jdbc:mysql://mysql:3306/kafka',
-    "topics" = 'adw.2306.geoip',
+    "topics" = 'adw.06.geoip',
     "table.name.format" = 'geoip',
-    "key.converter" = 'io.confluent.connect.protobuf.ProtobufConverter',
+    "key.converter" = 'io.confluent.connect.avro.AvroConverter',
     "key.converter.schema.registry.url" = 'http://schema-registry:8081',
     "key.converter.schemas.enable" = 'true',
     "value.converter" = 'io.confluent.connect.avro.AvroConverter',
