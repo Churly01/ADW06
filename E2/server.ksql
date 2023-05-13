@@ -7,7 +7,7 @@ SET 'auto.offset.reset'='earliest';
 CREATE STREAM IF NOT EXISTS ADW06_APACHE_RAW (
 	TIMESTAMP STRING,
 	`@timestamp` STRING,
-		TAG STRING,
+	TAG STRING,
 	USER_AGENT STRUCT<
 		UAID STRING,
 		ORIGINAL STRING,
@@ -19,7 +19,7 @@ CREATE STREAM IF NOT EXISTS ADW06_APACHE_RAW (
 		VERSION STRING,
 		NAME STRING>,	
 	GEOIP STRUCT<IP STRING,
-		`AS` STRUCT<ORGANIZATION STRUCT<NAME STRING>, NUMBER INT>,	
+		`AS` STRUCT<ORGANIZATION STRUCT<NAME STRING>, NUMBER INT>,
 		GEO STRUCT<COUNTRY_NAME STRING,
 				TIMEZONE STRING,
 				COUNTRY_ISO_CODE STRING,
@@ -29,13 +29,13 @@ CREATE STREAM IF NOT EXISTS ADW06_APACHE_RAW (
 				LOCATION STRUCT<LON DOUBLE, LAT DOUBLE>,
 				CONTINENT_CODE STRING,
 				POSTAL_CODE STRING>>,
-	HTTP STRUCT<RESPONSE STRUCT<STATUS_CODE INT, BODY STRUCT<BYTES INT>>,	
-		REQUEST STRUCT<METHOD STRING>,
+	HTTP STRUCT<RESPONSE STRUCT<STATUS_CODE INT, BODY STRUCT<BYTES INT>>,
+		REQUEST STRUCT<METHOD STRING, REFERRER STRING>,
 		VERSION STRING>,
-	URL STRUCT<ORIGINAL STRING>   )
+	URL STRUCT<ORIGINAL STRING>)
 	WITH (KAFKA_TOPIC='logstash', VALUE_FORMAT='JSON');
 
- 
+
 CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
 	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
 	'connection.url'='jdbc:mysql://mysql:3306/kafka',
@@ -63,7 +63,7 @@ WITH (KAFKA_TOPIC='adw.06.monitor', VALUE_FORMAT='JSON');
 
 CREATE STREAM IF NOT EXISTS ADW06_KEYMON
        WITH (KAFKA_TOPIC='adw.06.keymon', KEY_FORMAT='AVRO', VALUE_FORMAT='AVRO')
-       AS SELECT idrt, IP, UAID, NV, UV,  STRUCT(IP:=IP, UAID:=UAID) AS KEY
+       AS SELECT idrt, IP, UAID, NV, UV, STRUCT(IP:=IP, UAID:=UAID) AS KEY
        FROM adw06_monitor
        PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
 -- // PARA EL SERVIDOR DE EIBE...GRRR
@@ -79,18 +79,18 @@ CREATE STREAM IF NOT EXISTS ADW06_KEYMON
 CREATE STREAM IF NOT EXISTS ADW06_ACCESO
   WITH (KAFKA_TOPIC='adw.06.acceso', VALUE_FORMAT='AVRO')
   AS SELECT
-  geoip->ip as IP,
-  url->original as URL,
-  http->request->method as METHOD,
-  http->response->status_code as STATUS_CODE,
-  http->response->body->bytes as BYTES,
-  http->version as VHTTP,
-  user_agent->uaid as UAID,
-  user_agent->original as ORIGINAL,
-  user_agent->version as VUA,
-  user_agent->os->name +
-  user_agent->os->`FULL` as OSINFO,  
-  PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS 
+		geoip->ip as IP,
+		url->original as URL,
+		http->request->method as METHOD,
+		http->response->status_code as STATUS_CODE,
+		http->response->body->bytes as BYTES,
+		http->version as VHTTP,
+		user_agent->uaid as UAID,
+		user_agent->original as ORIGINAL,
+		user_agent->version as VUA,
+		user_agent->os->name +
+		user_agent->os->`FULL` as OSINFO,  
+		PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS
   FROM adw06_apache_raw
   WHERE tag='2306'
   AND user_agent->uaid IS NOT NULL
@@ -171,16 +171,16 @@ CREATE SINK CONNECTOR IF NOT EXISTS `adw06-geoip-jdbc-sink` WITH(
     "tasks.max" = '1');
 
 CREATE TABLE IF NOT EXISTS 2306_Q1 WITH (KAFKA_TOPIC='adw.2306.Q1')
-        AS SELECT
-       	MSK.KEY AS KEY,
-	MSK.NV AS V,
-	COUNT(AFK.http) AS N
-FROM 2306_monitor_stream_keyed MSK
+  AS SELECT
+		MSK.KEY AS KEY,
+		MSK.NV AS V,
+		COUNT(AFK.http) AS N
+	FROM 2306_monitor_stream_keyed MSK
 	INNER JOIN 2306_apache_filtered_keyed AFK
 	WITHIN 300 DAYS
 	GRACE PERIOD 15 MINUTES
 	ON AFK.KEY = MSK.KEY
-GROUP BY MSK.KEY, MSK.NV;
+	GROUP BY MSK.KEY, MSK.NV;
 
 CREATE TABLE IF NOT EXISTS 2306_Q2
 	WITH (KAFKA_TOPIC='adw.2306.Q2')
