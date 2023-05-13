@@ -63,7 +63,7 @@ WITH (KAFKA_TOPIC='adw.06.monitor', VALUE_FORMAT='JSON');
 
 CREATE STREAM IF NOT EXISTS ADW06_KEYMON
        WITH (KAFKA_TOPIC='adw.06.keymon', KEY_FORMAT='AVRO', VALUE_FORMAT='AVRO')
-       AS SELECT idrt, IP, UAID, NV, UV, STRUCT(IP:=IP, UAID:=UAID) AS KEY
+       AS SELECT NV, UV, rtreg, STRUCT(IP:=IP, UAID:=UAID) AS KEY
        FROM adw06_monitor
        PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
 -- // PARA EL SERVIDOR DE EIBE...GRRR
@@ -84,12 +84,15 @@ CREATE STREAM IF NOT EXISTS ADW06_ACCESO
 		http->request->method as METHOD,
 		http->response->status_code as STATUS_CODE,
 		http->response->body->bytes as BYTES,
+		http->request->referrer as REFERRER
 		http->version as VHTTP,
 		user_agent->uaid as UAID,
 		user_agent->original as ORIGINAL,
 		user_agent->version as VUA,
 		user_agent->os->name +
-		user_agent->os->`FULL` as OSINFO,  
+		user_agent->os->`FULL` as OSINFO,
+		--Name
+		--Devname
 		PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS
   FROM adw06_apache_raw
   WHERE tag='2306'
@@ -105,11 +108,14 @@ CREATE STREAM IF NOT EXISTS ADW06_KEYACC
      METHOD,
      STATUS_CODE,
      BYTES,
+     REFERRER,
      VHTTP,
      UAID,
      ORIGINAL,
      VUA,
      OSINFO,
+     --Name
+     --Devname
      TS,
      STRUCT(IP:=IP, UAID:=UAID) as KEY
   FROM adw06_acceso
@@ -118,8 +124,8 @@ CREATE STREAM IF NOT EXISTS ADW06_KEYACC
 CREATE TABLE IF NOT EXISTS ADW06_NACC
        WITH (KAFKA_TOPIC='adw.06.nacc', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
        AS SELECT
-              STRUCT(IP:=IP, UAID:=UAID) as KEY,
-	      COUNT(*) as N
+         STRUCT(IP:=IP, UAID:=UAID) as KEY,
+         COUNT(*) as N
        FROM adw06_keyacc
        GROUP BY  STRUCT(IP:=IP, UAID:=UAID);
 
