@@ -91,8 +91,8 @@ CREATE STREAM IF NOT EXISTS ADW06_ACCESO
 		user_agent->version as VUA,
 		user_agent->os->name +
 		user_agent->os->`FULL` as OSINFO,
-		--Name
-		--Devname
+		user_agent->name as NAME,
+		user_agent->device->name as DEVNAME,
 		PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS
   FROM adw06_apache_raw
   WHERE tag='2306'
@@ -114,8 +114,8 @@ CREATE STREAM IF NOT EXISTS ADW06_KEYACC
      ORIGINAL,
      VUA,
      OSINFO,
-     --Name
-     --Devname
+     NAME,
+     DEVNAME,
      TS,
      STRUCT(IP:=IP, UAID:=UAID) as KEY
   FROM adw06_acceso
