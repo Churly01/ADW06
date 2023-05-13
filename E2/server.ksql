@@ -84,7 +84,7 @@ CREATE STREAM IF NOT EXISTS ADW06_ACCESO
 		http->request->method as METHOD,
 		http->response->status_code as STATUS_CODE,
 		http->response->body->bytes as BYTES,
-		http->request->referrer as REFERRER
+		http->request->referrer as REFERRER,
 		http->version as VHTTP,
 		user_agent->uaid as UAID,
 		user_agent->original as ORIGINAL,
@@ -185,7 +185,7 @@ FROM ADW06_KEYMON KM
 	WITHIN 300 DAYS
 	GRACE PERIOD 15 MINUTES
 	ON KM.KEY = NC.KEY
-GROUP BY KM.KEY, KM.NV;
+GROUP BY KM.KEY, KM.NV
 EMIT CHANGES;
 
 /* Q2 */
@@ -200,5 +200,5 @@ FROM ADW06_KEYMON KM
 	GRACE PERIOD 15 MINUTES
 	ON KA.KEY = KM.KEY
 WHERE KM.KEY->UAID= '6248c7a654ab4c1061918e0801cb074f5f01983d'
-GROUP BY KM.KEY;
+GROUP BY KM.KEY
 EMIT CHANGES;
