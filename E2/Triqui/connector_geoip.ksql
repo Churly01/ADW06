@@ -3,8 +3,10 @@ SET 'auto.offset.reset'='earliest';
 /* Create SQL SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
 CREATE SINK CONNECTOR IF NOT EXISTS `adw06-geoip-jdbc-sink` WITH(
 	"connector.class" = 'io.confluent.connect.jdbc.JdbcSinkConnector',
-	"connection.url" = 'jdbc:mysql://mysql:3306/kafka',
-	"topics" = 'adw.06.geoip',
+	"connection.url" = 'jdbc:mariadb://triqui4.fi.upm.es:38060/adw06',
+	"connection.user" = 'adw06',
+	"connection.password" = '@DWupm2023',
+	"topics" = 'adw.adw06.geoip',
 	"table.name.format" = 'geoip',
 	"key.converter" = 'io.confluent.connect.avro.AvroConverter',
 	"key.converter.schema.registry.url" = 'https://schemaregistry:8085',
@@ -23,8 +25,6 @@ CREATE SINK CONNECTOR IF NOT EXISTS `adw06-geoip-jdbc-sink` WITH(
 	"consumer.override.sasl.jaas.config" = 'org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required username=\"connectorSA\" password=\"a20d23w\" metadataServerUrls=\"https://kafka1:8091,https://kafka2:8092\";',
 	"principal.service.name" = 'connectorSA',
 	"principal.service.password" = 'a20d23w',
-	"connection.user" = 'kafka',
-	"connection.password" = 'kpwd23',
 	"auto.create" = 'false',
 	"pk.mode" = 'record_value',
 	"pk.fields" = 'IP',
