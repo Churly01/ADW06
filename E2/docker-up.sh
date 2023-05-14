@@ -19,6 +19,6 @@ docker exec -t ksqldb-cli ksql -f /connector_geoip.ksql http://ksqldb-server:808
 
 read -n 1 -p "Press to launch queries"
 trap '' 2
-docker exec -t ksqldb-cli ksql -f /q1.ksql http://ksqldb-server:8088
-docker exec -t ksqldb-cli ksql -f /q2.ksql http://ksqldb-server:8088
+(trap - 2; exec docker exec -t ksqldb-cli ksql -f /q1.ksql http://ksqldb-server:8088)
+(trap - 2; exec docker exec -t ksqldb-cli ksql -f /q2.ksql http://ksqldb-server:8088)
 trap 2
