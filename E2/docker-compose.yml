@@ -87,7 +87,15 @@ services:
       - broker
       - ksqldb-server
     volumes:
-      - ./server.ksql:/server.ksql
+      - ./apache_raw.ksql:/apache_raw.ksql
+      - ./connector_monitor.ksql:/connector_monitor.ksql
+      - ./stream_monitor.ksql:/stream_monitor.ksql
+      - ./stream_acceso.ksql:/stream_acceso.ksql
+      - ./table_nacc.ksql:/table_nacc.ksql
+      - ./table_geoip.ksql:/table_geoip.ksql
+      - ./connector_geoip.ksql:/connector_geoip.ksql
+      - ./q1.ksql:/q1.ksql
+      - ./q2.ksql:/q2.ksql
     entrypoint: /bin/sh
     tty: true
     

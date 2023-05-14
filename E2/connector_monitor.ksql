@@ -1,0 +1,18 @@
+SET 'auto.offset.reset'='earliest';
+
+/* SQL SOURCE CONNECTOR */
+CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
+	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
+	'connection.url'='jdbc:mysql://mysql:3306/kafka',
+	'connection.user' = 'kafka',
+	'connection.password'='kpwd23',
+	'mode'='incrementing',
+	'incrementing.column.name'='idrt',
+	'validate.non.null'='false',
+	'table.whitelist'='monitor',
+	'topic.prefix'='adw.06.',
+	'value.converter.schemas.enable'='false',
+	'key.converter.schemas.enable'='false',	
+	'key.converter' = 'org.apache.kafka.connect.json.JsonConverter',
+	'value.converter' = 'org.apache.kafka.connect.json.JsonConverter'
+);

@@ -1,0 +1,47 @@
+SET 'auto.offset.reset'='earliest';
+
+/* STREAM FILTERING LOGSTASH */
+CREATE STREAM IF NOT EXISTS ADW06_ACCESO
+	WITH (KAFKA_TOPIC='adw.06.acceso', VALUE_FORMAT='AVRO')
+	AS SELECT
+		geoip->ip as IP,
+		url->original as URL,
+		http->request->method as METHOD,
+		http->response->status_code as STATUS_CODE,
+		http->response->body->bytes as BYTES,
+		http->request->referrer as REFERRER,
+		http->version as VHTTP,
+		user_agent->uaid as UAID,
+		user_agent->original as ORIGINAL,
+		user_agent->version as VUA,
+		user_agent->os->name +
+		user_agent->os->`FULL` as OSINFO,
+		user_agent->name as NAME,
+		user_agent->device->name as DEVNAME,
+		PARSE_TIMESTAMP(TIMESTAMP, 'dd/MMM/yyyy:HH:mm:ss Z', 'UTC') as TS
+	FROM ADW06_APACHE_RAW
+	WHERE tag='2306'
+	AND user_agent->uaid IS NOT NULL
+	AND geoip->ip IS NOT NULL;
+
+/* STREAM WITH KEY */
+CREATE STREAM IF NOT EXISTS ADW06_KEYACC
+	WITH (KAFKA_TOPIC='adw.06.keyacc', VALUE_FORMAT='AVRO', KEY_FORMAT='AVRO')
+	AS SELECT
+		IP,
+		URL,
+		METHOD,
+		STATUS_CODE,
+		BYTES,
+		REFERRER,
+		VHTTP,
+		UAID,
+		ORIGINAL,
+		VUA,
+		OSINFO,
+		NAME,
+		DEVNAME,
+		TS,
+		STRUCT(IP:=IP, UAID:=UAID) as KEY
+	FROM ADW06_ACCESO
+	PARTITION BY STRUCT(IP:=IP, UAID:=UAID);
