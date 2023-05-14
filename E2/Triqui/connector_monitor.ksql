@@ -1,0 +1,32 @@
+SET 'auto.offset.reset'='earliest';
+
+/* SQL SOURCE CONNECTOR */
+CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
+	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
+	'connection.url'='jdbc:mysql://mysql:3306/kafka',
+	'connection.user' = 'kafka',
+	'connection.password'='kpwd23',
+	'mode'='incrementing',
+	'incrementing.column.name'='idrt',
+	'validate.non.null'='false',
+	'table.whitelist'='monitor',
+	'topic.prefix'='adw.06.',
+	'key.converter.schemas.enable'='false',	
+	'key.converter' = 'org.apache.kafka.connect.json.JsonConverter',
+	'key.converter.schema.registry.url' = 'https://schemaregistry:8085',
+	'key.converter.schema.registry.ssl.truststore.location' = '/etc/kafka/secrets/kafka.client.truststore.jks',
+	'key.converter.schema.registry.ssl.truststore.password' = 'confluent',
+	'key.converter.basic.auth.credentials.source' = 'USER_INFO',
+	'key.converter.basic.auth.user.info' = 'connectorSA:a20d23w',
+	'value.converter.schemas.enable'='false',
+	'value.converter.schema.registry.url' = 'https://schemaregistry:8085',
+	'value.converter.schema.registry.ssl.truststore.location' = '/etc/kafka/secrets/kafka.client.truststore.jks',
+	'value.converter.schema.registry.ssl.truststore.password' = 'confluent',
+	'value.converter.basic.auth.credentials.source' = 'USER_INFO',
+	'value.converter.basic.auth.user.info' = 'connectorSA:a20d23w',
+	'value.converter' = 'org.apache.kafka.connect.json.JsonConverter',
+	'producer.interceptor.classes' = 'io.confluent.monitoring.clients.interceptor.MonitoringProducerInterceptor',
+	'producer.override.sasl.jaas.config' = 'org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required username=\"connectorSA\" password=\"a20d23w\" metadataServerUrls=\"https://kafka1:8091,https://kafka2:8092\";',
+	'principal.service.name' = 'connectorSA',
+	'principal.service.password' = 'a20d23w',
+);
