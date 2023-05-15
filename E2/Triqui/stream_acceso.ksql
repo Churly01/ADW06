@@ -14,7 +14,7 @@ CREATE STREAM IF NOT EXISTS adw06_acceso
 		user_agent->uaid as UAID,
 		user_agent->original as ORIGINAL,
 		user_agent->version as VUA,
-		user_agent->os->name +
+		user_agent->os->name + ':' +
 		user_agent->os->`full` as OSINFO,
 		user_agent->name as NAME,
 		user_agent->device->name as DEVNAME,
