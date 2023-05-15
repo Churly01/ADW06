@@ -3,13 +3,13 @@ SET 'auto.offset.reset'='earliest';
 /* SQL SOURCE CONNECTOR */
 CREATE SOURCE CONNECTOR IF NOT EXISTS `adw06-monitor-jdbc-source` WITH (
 	'connector.class'='io.confluent.connect.jdbc.JdbcSourceConnector',
-	'connection.url'='jdbc:mariadb://triqui4.fi.upm.es:38060/adw06',
+	'connection.url'='jdbc:mariadb://triqui4.fi.upm.es:38060/kafka',
 	'connection.user' = 'adw06',
 	'connection.password'='@DWupm2023',
 	'mode'='incrementing',
 	'incrementing.column.name'='idrt',
 	'validate.non.null'='false',
-	'table.whitelist'='adw06.monitor',
+	'table.whitelist'='kafka.monitor',
 	'topic.prefix'='adw.adw06.',
 	'key.converter.schemas.enable'='false',
 	'key.converter' = 'org.apache.kafka.connect.json.JsonConverter',
