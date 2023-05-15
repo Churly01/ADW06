@@ -78,4 +78,7 @@ Comandos importantes
 	Conexion al CLUSTER de ADW:
 		docker run --rm -it confluentinc/ksqldb-cli ksql -u adw06 -p @DWupm2023  http://triqui4.fi.upm.es:38188
 
-
+Para Sara: matar el mysql mamapinga
+-----------------
+sudo lsof -i :33060
+sudo kill <ID_del_proceso>
