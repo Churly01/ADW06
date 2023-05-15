@@ -4,7 +4,7 @@ SET 'auto.offset.reset'='earliest';
 SELECT KM.KEY AS KEY,
 		KM.NV AS V,
 		NC.N AS N
-FROM ADW06_KEYMON KM
-	INNER JOIN ADW06_NACC NC
+FROM adw06_keymon KM
+	INNER JOIN adw06_nacc NC
 	ON KM.KEY = NC.KEY
 EMIT CHANGES;

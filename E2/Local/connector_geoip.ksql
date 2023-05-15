@@ -1,10 +1,9 @@
 SET 'auto.offset.reset'='earliest';
 
-/* Create SQL SINK Connector. pk.mode is record_value (we take a value from a record, IP, to be PK of each value) */
 CREATE SINK CONNECTOR IF NOT EXISTS `adw06-geoip-jdbc-sink` WITH(
 	"connector.class" = 'io.confluent.connect.jdbc.JdbcSinkConnector',
 	"connection.url" = 'jdbc:mysql://mysql:3306/kafka',
-	"topics" = 'adw.06.geoip',
+	"topics" = 'adw.adw06.geoip',
 	"table.name.format" = 'geoip',
 	"key.converter" = 'io.confluent.connect.avro.AvroConverter',
 	"key.converter.schema.registry.url" = 'http://schema-registry:8081',
